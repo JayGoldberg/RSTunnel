@@ -13,7 +13,7 @@
 ## BEGIN SCRIPT ##
 ##################
 
-LoadConf() {
+LoadConfig() {
     if [ ! -x rstunnel.conf ]; then
         echo "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf";
         exit 1
@@ -52,7 +52,7 @@ Usage() {
             quite a lot of output
 
       [-?]  This help message
-    HEREDOC
+HEREDOC
     exit 1
 }
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 #
 # This program will make sure that the rstunnel process is constantly running. 
