@@ -1,4 +1,4 @@
-#!/usr/local/bin/bash
+#!/bin/sh
 
 #
 # This is an installation script in order to help the user set the user configure

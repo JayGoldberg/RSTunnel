@@ -1,113 +1,78 @@
-#!/usr/local/bin/bash
+#!/bin/sh
 
-##
 ## Reliable SSH Tunnel
-## 
-
-##
-## USAGE: ./rstunnel [-e] [-v/-vv] [-?]
-## 
-## This is mainly intended for people who want/have a secure tunnel from one
-## host to another. It is also suggested that your run this script in a crontab
-## so that this way, if the tunnel goes down, it will start it back up for you 
-## automatically.
-##
-## If you specify "-e" it will e-mail you if the tunnel is down and restarted.
-## You must create a  file called "mail.message".  In that file, just put some text
-## that you want to send out to yourself, notifying that the tunnel was down.
-##
-## EXAMPLE: mail.message 
-## "The tunnel to YOUR REMOTE SERVER was restared!"
-##
-## You can you the "-v" or "-vv" switches to turn on the verbosity. "-v" will put 
-## you in the standard verbose mode, and the "-vv" will put you in the debug mode.
-## This can be usfull if you want to see what's going on.
-##
-## The "-?" will print the usage out for you.
-##
 ##
 ## RSTunnel written by: Amram Bentolila
 ##			amram@manhattanprojects.com 
 ## 
 ## Contributors:  	
 ##			Chad Trabant - chad.trabant@knmi.nl
-
+##			Jay Goldberg - jaymgoldberg@gmail.com
 
 ##################
 ## BEGIN SCRIPT ##
 ##################
 
-# First grabbing all the variable from the rstunnel.conf file.
-
-if [ ! -x rstunnel.conf ]; then
-	echo "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf";
-	exit 1
-else
-	. rstunnel.conf
-fi
+LoadConf() {
+	if [ ! -x rstunnel.conf ]; then
+		echo "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf";
+		exit 1
+	else
+		. rstunnel.conf
+	fi
+}
 
 # Simple Error Check Function
-
-ErrorCheck()
-{
+ErrorCheck() {
 ERR=$?
-if [ $ERR -gt 0 ]; then
+if [ $ERR -ne 0 ]; then
 	echo "Error Code: "$ERR
 	echo "Exiting!"
-	if [ -f tempfile.out ]; then
-	    rm tempfile.out
-	fi
-	if [ -f temp.out ]; then
-	    rm temp.out
-	fi
-	if [ ! -z $INSTALL ]; then
-	    rm -rf $XPWD/temp
-	fi
+	[ -f tempfile.out ] && rm tempfile.out
+	[ -f temp.out ] && rm temp.out
+	[ ! -z $INSTALL ] && rm -rf ${XPWD}/temp
 	exit 1
 fi
 }
 
-Usage()
-{
-echo "USAGE: ./rstunnel (-e) (-v/-vv) (-?)";
-echo "";
-echo "[-e] This will turn on the e-mail feature.  Whenever the tunnel goes down and it";
-echo "     gets restarted, it will e-mail the user configured in this script.  If this";
-echo "     feature is turned on, please be sure to add the file 'mail.message' in the"; 
-echo "     directory where rstunnel resides.  The file 'mail.message', will be mailed"; 
-echo "     out for you, so be sure to have a message written in there notifying you"; 
-echo "     that the tunnel went down.  This feature is most effetive when rstunnel is";
-echo "     running from a cron job or in the background.";
-echo ""
-echo "[-v/-vv] There are two levels of verbosity. If you type '-v', this will put you";
-echo "     in VERBOSE mode. And if you type '-vv', this will put you in DEBUG mode. It";
-echo "     is not reccomended that you run in DEBUG mode in the cron, but VERBOSE mode";
-echo "     might be suitable enough.";
-echo "";
-echo "[-?] This displays this message.";
-echo "";
+Usage() {
+cat <<HEREDOC
+Usage: ./rstunnel [-e]/[-v/-vv]/[-?/-h]
+RSTunnel (Reliable SSH Tunnel) maintains a secure tunnel between two hosts. Can be run interactively, through cron, or using rstunneld (also can be called from cron).
+
+  [-e]		Turn on the e-mail feature. If the tunnel goes down, an e-mail will be
+		sent to the address figured. Be sure to add the template file 'mail.message'
+		exists in the directory where rstunnel resides. This is the source of the
+		mail message. Useful when rstunnel is running from a cron job or in the
+		background using rstunneld
+
+  [-v/-vv]	'-v' is VERBOSE output, ' is VERBOSE output, '-vv' is DEBUG output. It is
+		not reccomended that you run in DEBUG mode when running in cron as there is
+		quite a lot of output
+
+  [-?]		This help message
+HEREDOC
 
 exit 1
 }
 
 # This function will try to automatically install suckblow-1.1 for you.
-InstallBlow()
-{
-    if test `whoami` == "root"; then
+InstallBlow() {
+    if [ $(id -u) -eq  0 ]; then
 	    echo ""
     else
 	    echo "[FATAL] This must be run as root."
 	    exit 1
     fi
 
-    if [ `uname` == "FreeBSD" ]; then
+    if [ $(uname) == "FreeBSD" ]; then
 	fetch ftp://ftp.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
 	ErrorCheck
-	if [ $? -gt 0 ]; then
+	if [ $? -ne 0 ]; then
 	    fetch ftp://ftp.se.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
 	    ErrorCheck
 	fi
-	XPWD=`pwd`
+	XPWD=$(pwd)
 	INSTALL="1"
 	mkdir temp
 	ErrorCheck
@@ -130,29 +95,33 @@ InstallBlow()
     fi
 }
 
-InstallBlowSource()
-{
-    if [ `uname` = "SunOS" ]; then
-	OS="SunOS";
-    elif [ `uname` = "Linux" ]; then
-	OS="Linux";
-    elif [ `uname` = "FreeBSD" ]; then 
-	OS="FreeBSD";
-    else
-	echo "[FATAL] Sorry, your OS is not supported. If this is a problem, please e-mail me at amram@manhattanprojects.com";
-	exit 1
-    fi
-    if [ ! -z $DEBUG ]; then
-	echo ">> Checking User Information";
-    fi
-    if [ $OS == "SunOS" ]; then
-	if [ `who am i | awk '{print $1}'` != "root" ]; then
+InstallBlowSource() {
+case $(uname) in
+	SunOS)
+		OS='SunOS'
+		;;
+	Linux)
+		OS='Linux'
+		;;
+	FreeBSD)
+		OS='FreeBSD'
+		;;
+	*)
+		echo "[FATAL] Sorry, your OS is not supported."
+		exit 1
+		;;
+	esac
+
+    [ ! -z $DEBUG ] && echo ">> Checking User Information"
+
+    if [ $OS == 'SunOS' ]; then
+	if [ $(who am i | awk '{print $1}') != "root" ]; then
 		echo "[FATAL] This must be run as root."
 		##exit 1
 		echo "Still trying though ...";
 	fi
     else
-	if test `whoami` != "root"; then
+	if [ $(whoami) != "root" ]; then
 	 	   echo "[FATAL] This must be run as root."
 	           exit 1
         fi
@@ -164,9 +133,8 @@ InstallBlowSource()
             echo "[FATAL] Please make sure you are in the root directory of RSTunnel.";
 	    exit 1
     fi
-    if [ ! -z $DEBUG ]; then
-	echo  ">> Compiling blow for "${OS};
-    fi
+
+    [ ! -z $DEBUG ] && echo  ">> Compiling blow for "${OS}
     
     if [ $OS = "SunOS" ]; then
 	gcc -o blow -lnsl -lsocket -lresolv main-mod.c
@@ -180,24 +148,23 @@ InstallBlowSource()
     	gcc -o blow main.o
     	ErrorCheck
     fi
-    if [ ! -z $DEBUG ]; then
-	echo ">> Installing blow"; 
-    fi
+
+    [ ! -z $DEBUG ] && echo ">> Installing blow"
+
     cp blow /usr/local/bin/
     ErrorCheck
     echo "==> Installation Complete. Please re-run rstunnel.";
     exit 1
 }
 
-MailUser()
-{
-if [ ! -f mail.message ]; then
-    echo "File: 'mail.message' can't be found";
-    echo "Mail can't be sent do to file missing. Please be sure to add this file";
-    echo "tothe current working directory with your message written in the file.";
-    exit 1
-fi
-# E-mail User, saying the tunnel was down, and now restarted.
+MailUser() {
+    if [ ! -f mail.message ]; then
+        echo "File: 'mail.message' can't be found";
+        echo "Mail can't be sent due to missing file. Please be sure to add this file";
+        echo "to the current working directory with your message written in the file.";
+        exit 1
+    fi
+    # E-mail User, saying the tunnel was down, and now restarted.
 	for emailuser in $EMAIL; do
 		mail -s "Tunnel_Restarted" $emailuser < mail.message
 		echo "";
@@ -206,21 +173,20 @@ fi
 }
 
 # This function will test the connection through the tunnel.
-TestConnection()
-{
-if [ ! -z $DEBUG ]; then
-    echo "Testing Connection" | ${BLOWPATH} -v -p ${SUCKPORT} localhost ; ERR=$?
-else 
-    echo "Testing Connection" | ${BLOWPATH} -p ${SUCKPORT} localhost ; ERR=$?
-fi
-    if [ $ERR -gt 0 ]; then 
+TestConnection() {
+    if [ ! -z $DEBUG ]; then
+        echo "Testing Connection" | ${BLOWPATH} -v -p ${SUCKPORT} localhost ; ERR=$?
+    else 
+        echo "Testing Connection" | ${BLOWPATH} -p ${SUCKPORT} localhost ; ERR=$?
+    fi
+    if [ $ERR -ne 0 ]; then 
 	if [ ! -z $VERBOSE ]; then
 	    echo ">> [ F A I L E D ]"
 	    echo "===> Attempting to restart tunnel"
 	    echo ">> Killing Old SSH Process"
 	fi
 	${KILLCMD} | ${SHELLPATH}; ERR=$?
-	if [ $ERR -gt 0 ]; then
+	if [ $ERR -ne 0 ]; then
 	    echo "[FATAL] Unable to kill previous process";
 	    exit 1
 	fi
@@ -272,10 +238,9 @@ case $2 in
 		;;
 esac
 
+LoadConfig
 
-if [ ! -z $VERBOSE ]; then
-    echo "===> Doing some prelimenary checks "
-fi
+[ ! -z $VERBOSE ] && echo "===> Doing some prelimenary checks"
 
 # We have to check to for blow. If it doesn't exist, let's try to
 # install it.
@@ -321,20 +286,15 @@ fi
 if [ `uname` = "FreeBSD" -o `uname` = "Linux" ]; then
 	PSFLAGS="-awx"
 	KILLCMD=`ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$1}'`
-	if [ -z $CONFIGFILE ]; then
-	    CONFIGFILE=~/.ssh/config
-	fi
+	[ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
 
 elif [ `uname` = "SunOS" ]; then
 	PSFLAGS="-ewf"
 	KILLCMD=`ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$2}'`
-	if [ -z $CONFIGFILE ]; then
-	    CONFIGFILE=~/.ssh/config
-	fi
+	[ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
 
 else 
-    echo "[FATAL] Your OS is not supported. Sorry!"
-    echo "E-mail me at; amram@manhattanprojects.com"
+    echo "[FATAL] Sorry, your OS is not supported."
     exit 1
 fi
 
@@ -351,8 +311,8 @@ else
 fi
 
 # We have to make sure that we set aside a special port for blow on the same tunnel.
-# This is very crutial, because to do a true test of the connectivity of the tunnel, we need 
-# to send some peice of data through throught the tunnel, using blow.
+# This is very cruticial, because to do a true test of the connectivity of the tunnel, we need 
+# to send some peice of data through throught it, using blow.
 
 grep "LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT"  $CONFIGFILE > tempfile.out
 
@@ -387,7 +347,7 @@ else
     fi
 fi
 
-# This will check the proc listing for a active ssh tunnel running
+# This will check the proc listing for a active SSH tunnel running
 
 ps ${PSFLAGS} | grep ssh | grep ${REMOTEHOSTNAME} | grep -v "grep "${REMOTEHOSTNAME} | grep -v "sshd" > temp.out
 
@@ -425,8 +385,7 @@ else
 	fi
 fi
 
-if [ ! -z $VERBOSE ]; then
-    echo "===> Cleaning up"
-fi
+[ ! -z $VERBOSE ] && echo "===> Cleaning up"
+
 rm -f tempfile.out
 rm -f temp.out
