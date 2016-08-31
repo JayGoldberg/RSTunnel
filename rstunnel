@@ -14,154 +14,157 @@
 ##################
 
 LoadConf() {
-	if [ ! -x rstunnel.conf ]; then
-		echo "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf";
-		exit 1
-	else
-		. rstunnel.conf
-	fi
+    if [ ! -x rstunnel.conf ]; then
+        echo "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf";
+        exit 1
+    else
+        . rstunnel.conf
+    fi
 }
 
 # Simple Error Check Function
+
 ErrorCheck() {
-ERR=$?
-if [ $ERR -ne 0 ]; then
-	echo "Error Code: "$ERR
-	echo "Exiting!"
-	[ -f tempfile.out ] && rm tempfile.out
-	[ -f temp.out ] && rm temp.out
-	[ ! -z $INSTALL ] && rm -rf ${XPWD}/temp
-	exit 1
-fi
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+        echo "Error Code: "$ERR
+        echo "Exiting!"
+        [ -f tempfile.out ] && rm tempfile.out
+        [ -f temp.out ] && rm temp.out
+        [ ! -z $INSTALL ] && rm -rf ${XPWD}/temp
+        exit 1
+    fi
 }
 
 Usage() {
-cat <<HEREDOC
-Usage: ./rstunnel [-e]/[-v/-vv]/[-?/-h]
-RSTunnel (Reliable SSH Tunnel) maintains a secure tunnel between two hosts. Can be run interactively, through cron, or using rstunneld (also can be called from cron).
+    cat <<HEREDOC
+    Usage: ./rstunnel [-e]/[-v/-vv]/[-?/-h]
+    RSTunnel (Reliable SSH Tunnel) maintains a secure tunnel between two hosts. Can be run interactively, through cron, or using rstunneld (also can be called from cron).
 
-  [-e]		Turn on the e-mail feature. If the tunnel goes down, an e-mail will be
-		sent to the address figured. Be sure to add the template file 'mail.message'
-		exists in the directory where rstunnel resides. This is the source of the
-		mail message. Useful when rstunnel is running from a cron job or in the
-		background using rstunneld
+      [-e]  Turn on the e-mail feature. If the tunnel goes down, an e-mail will be
+            sent to the address figured. Be sure to add the template file 'mail.message'
+            exists in the directory where rstunnel resides. This is the source of the
+            mail message. Useful when rstunnel is running from a cron job or in the
+            background using rstunneld
 
-  [-v/-vv]	'-v' is VERBOSE output, ' is VERBOSE output, '-vv' is DEBUG output. It is
-		not reccomended that you run in DEBUG mode when running in cron as there is
-		quite a lot of output
+      [-v/-vv]  '-v' is VERBOSE output, ' is VERBOSE output, '-vv' is DEBUG output. It is
+            not reccomended that you run in DEBUG mode when running in cron as there is
+            quite a lot of output
 
-  [-?]		This help message
-HEREDOC
-
-exit 1
+      [-?]  This help message
+    HEREDOC
+    exit 1
 }
 
-# This function will try to automatically install suckblow-1.1 for you.
+# This function will try to automatically install suckblow-1.1 for you
+
 InstallBlow() {
     if [ $(id -u) -eq  0 ]; then
-	    echo ""
-    else
-	    echo "[FATAL] This must be run as root."
-	    exit 1
+        echo ""
+        else
+        echo "[FATAL] This must be run as root."
+        exit 1
     fi
 
-    if [ $(uname) == "FreeBSD" ]; then
-	fetch ftp://ftp.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
-	ErrorCheck
-	if [ $? -ne 0 ]; then
-	    fetch ftp://ftp.se.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
-	    ErrorCheck
-	fi
-	XPWD=$(pwd)
-	INSTALL="1"
-	mkdir temp
-	ErrorCheck
-	mv suckblow-1.1.tar.gz temp/
-	cd temp
-	tar -xvzf suckblow-1.1.tar.gz
+    if [ $OS == "FreeBSD" ]; then
+        fetch ftp://ftp.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
+        ErrorCheck
+        if [ $? -ne 0 ]; then
+            fetch ftp://ftp.se.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
+            ErrorCheck
+        fi
+        XPWD=$(pwd)
+        INSTALL="1"
+        mkdir temp
+        ErrorCheck
+        mv suckblow-1.1.tar.gz temp/
+        cd temp
+        tar -xvzf suckblow-1.1.tar.gz
         cd suckblow-1.1
-	make
-	ErrorCheck
-	make install
-	ErrorCheck
-	cd ../../
-	rm -rf temp/
-	ErrorCheck
-	echo "==> Installation Complete "
-	sleep 2
-    else
-	    echo "Sorry can't fetch. Please downlaod and install `suckblow-1.1.tar.gz`";
-	    exit 1
+        make
+        ErrorCheck
+        make install
+        ErrorCheck
+        cd ../../
+        rm -rf temp/
+        ErrorCheck
+        echo "==> Installation Complete "
+        sleep 2
+        else
+        echo "Sorry can't fetch. Please downlaod and install `suckblow-1.1.tar.gz`"
+        exit 1
     fi
+}
+
+CheckOS() {
+    case $(uname) in
+        SunOS)
+            OS='SunOS'
+            ;;
+        Linux)
+            OS='Linux'
+            ;;
+        FreeBSD)
+            OS='FreeBSD'
+            ;;
+        *)
+            echo "[FATAL] Sorry, your OS is not supported."
+            exit 1
+            ;;
+    esac
 }
 
 InstallBlowSource() {
-case $(uname) in
-	SunOS)
-		OS='SunOS'
-		;;
-	Linux)
-		OS='Linux'
-		;;
-	FreeBSD)
-		OS='FreeBSD'
-		;;
-	*)
-		echo "[FATAL] Sorry, your OS is not supported."
-		exit 1
-		;;
-	esac
-
     [ ! -z $DEBUG ] && echo ">> Checking User Information"
 
     if [ $OS == 'SunOS' ]; then
-	if [ $(who am i | awk '{print $1}') != "root" ]; then
-		echo "[FATAL] This must be run as root."
-		##exit 1
-		echo "Still trying though ...";
-	fi
+        if [ $(who am i | awk '{print $1}') != "root" ]; then
+            echo "[FATAL] This must be run as root."
+            ##exit 1
+            echo "Still trying though ..."
+        fi
     else
-	if [ $(whoami) != "root" ]; then
-	 	   echo "[FATAL] This must be run as root."
-	           exit 1
+        if [ ! $(id -u) -eq 0 ]; then
+            echo "[FATAL] This must be run as root."
+            exit 1
         fi
     fi
 
     if [ -d src ]; then
-            cd src
-    else
-            echo "[FATAL] Please make sure you are in the root directory of RSTunnel.";
-	    exit 1
+        cd src
+        else
+        echo "[FATAL] Please make sure you are in the root directory of RSTunnel."
+        exit 1
     fi
 
     [ ! -z $DEBUG ] && echo  ">> Compiling blow for "${OS}
-    
+
     if [ $OS = "SunOS" ]; then
-	gcc -o blow -lnsl -lsocket -lresolv main-mod.c
-	ErrorCheck
+        gcc -o blow -lnsl -lsocket -lresolv main-mod.c
+        ErrorCheck
     elif [ $OS = "Linux" ]; then
-	gcc -o blow main-mod.c
-	ErrorCheck
-    else
-    	gcc -c main.c
-    	ErrorCheck
-    	gcc -o blow main.o
-    	ErrorCheck
+        gcc -o blow main-mod.c
+        ErrorCheck
+        else
+        gcc -c main.c
+        ErrorCheck
+        gcc -o blow main.o
+        ErrorCheck
     fi
 
     [ ! -z $DEBUG ] && echo ">> Installing blow"
 
     cp blow /usr/local/bin/
     ErrorCheck
-    echo "==> Installation Complete. Please re-run rstunnel.";
+    echo "==> Installation Complete. Please re-run rstunnel."
     exit 1
 }
 
 MailUser() {
     if [ ! -f mail.message ]; then
-        echo "File: 'mail.message' can't be found";
-        echo "Mail can't be sent due to missing file. Please be sure to add this file";
-        echo "to the current working directory with your message written in the file.";
+        echo "File: 'mail.message' can't be found"
+        echo "Mail can't be sent due to missing file. Please be sure to add this file"
+        echo "to the current working directory with your message written in the file."
         exit 1
     fi
     # E-mail User, saying the tunnel was down, and now restarted.
@@ -172,7 +175,8 @@ MailUser() {
 	done  
 }
 
-# This function will test the connection through the tunnel.
+# This function will test the connection through the tunnel
+
 TestConnection() {
     if [ ! -z $DEBUG ]; then
         echo "Testing Connection" | ${BLOWPATH} -v -p ${SUCKPORT} localhost ; ERR=$?
@@ -203,67 +207,52 @@ TestConnection() {
     fi
 }
 
-case $1 in
-	-v)
-		VERBOSE=on
-		;;
-	-vv)
-		VERBOSE=on
-		DEBUG=on
-		echo "===>  DEBUGING ON  <==="
-		;;
-	-e)
-		X_EMAIL=on
-		;;
-	-?)
-		Usage
-		;;
-esac
-case $2 in
-	-v)
-		VERBOSE=on
-		;;
-	-vv)
-		if [ -z $DEBUG ]; then
-			echo "===>  DEBUGING ON  <==="
-		fi	
-		VERBOSE=on
-		DEBUG=on
-		;;
-	-e)
-		X_EMAIL=on
-		;;
-	-?)
-		Usage
-		;;
-esac
+for arg in $1 $2; do
+    case $arg in
+        -v)
+            VERBOSE=on
+            ;;
+        -vv)
+            VERBOSE=on
+            DEBUG=on
+            echo "===>  DEBUGING ON  <==="
+            ;;
+        -e)
+            X_EMAIL=on
+            ;;
+        -?)
+            Usage
+            ;;
+    esac
+done
 
 LoadConfig
 
 [ ! -z $VERBOSE ] && echo "===> Doing some prelimenary checks"
 
-# We have to check to for blow. If it doesn't exist, let's try to
+CheckOS
+
+# We have to check for `blow`. If it doesn't exist, let's try to
 # install it.
 
 if [ ! -f ${BLOWPATH} ]; then
-	echo "Can't find blow!!"
-	echo -n "Do you want me to install it for you? [y/n] --> "
-	read answer 
-		while [ $answer != "y" -a $answer != "n" ]; do 
-			echo -n "Please choose [y/n] --> " 
-			read answer
-		done
+    echo "Can't find blow!!"
+    echo -n "Do you want me to install it for you? [y/n] --> "
+    read answer 
+    while [ $answer != "y" -a $answer != "n" ]; do 
+        echo -n "Please choose [y/n] --> " 
+        read answer
+    done
 
-		if [ $answer = "y" ]; then
-			InstallBlowSource
-			ErrorCheck
-		else
-			echo "You must install suckblow-1.1 before you continue."
-			echo ""
-			echo "Read the README file for more information."
-			exit 1
-		fi
-		
+    if [ $answer = "y" ]; then
+        InstallBlowSource
+        ErrorCheck
+    else
+        echo "You must install suckblow-1.1 before you continue."
+        echo ""
+        echo "Read the README file for more information."
+        exit 1
+    fi
 fi
 
 echo ""
@@ -271,28 +260,26 @@ echo ""
 # Just checking to make sure the other system binaries VARIABLES are correct.
 
 if [ ! -f $SHELLPATH ]; then
-	echo "[FATAL] Can't find "$SHELLPATH
-	echo "Please make sure that the SHELLPATH variable is set correctly.";
-	exit 1
+    echo "[FATAL] Can't find "$SHELLPATH
+    echo "Please make sure that the SHELLPATH variable is set correctly.";
+    exit 1
 fi
 if [ ! -f $SSHPATH ]; then
-	echo "[FATAL] Can't find "$SSHPATH
-	echo "Please make sure that the SSHPATH variable is set correctly.";
-	exit 1
+    echo "[FATAL] Can't find "$SSHPATH
+    echo "Please make sure that the SSHPATH variable is set correctly.";
+    exit 1
 fi
 
 # We need to check what kind of OS is running to determine the flags for the "ps" command
 
-if [ `uname` = "FreeBSD" -o `uname` = "Linux" ]; then
-	PSFLAGS="-awx"
-	KILLCMD=`ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$1}'`
-	[ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
-
-elif [ `uname` = "SunOS" ]; then
-	PSFLAGS="-ewf"
-	KILLCMD=`ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$2}'`
-	[ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
-
+if [ $OS = "FreeBSD" -o $OS = "Linux" ]; then
+    PSFLAGS="-awx"
+    KILLCMD=$(ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$1}')
+    [ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
+elif [ $OS = "SunOS" ]; then
+    PSFLAGS="-ewf"
+    KILLCMD=$(ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$2}')
+    [ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
 else 
     echo "[FATAL] Sorry, your OS is not supported."
     exit 1
@@ -302,9 +289,9 @@ fi
 # Let's get all the perameters out of the ssh configfile.
 
 if [ -f ${CONFIGFILE} ]; then
-    LOCALPORT=`grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $2}'`
-    REMOTEIP=`grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}'`
-    REMOTEPORT=`grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}'`
+    LOCALPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $2}')
+    REMOTEIP=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}')
+    REMOTEPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}')
 else
     echo "[FATAL] Can't find "$CONFIGFILE
     exit 1
@@ -317,33 +304,33 @@ fi
 grep "LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT"  $CONFIGFILE > tempfile.out
 
 if [ -s tempfile.out ]; then
-    echo -n "" 
+    echo -n ""
 else
-    # Let's confirm with the user that we are going to add in a "LocalForward" line 
-    # in the ~/.ssh/config.    
-    echo "[FATAL] Can't find LocalForward for RSTunnel.";
+    # Let's confirm with the user that we are going to add in a "LocalForward" line
+    # in the ~/.ssh/config.
+    echo "[FATAL] Can't find LocalForward for RSTunnel."
     echo -n "Do you want me to add it in the config file for you? [y/n] > "
     read value
     while [ -z $value ]; do
-	echo -n "Invalid selection. Please select [y/n] > "
-	read value
+        echo -n "Invalid selection. Please select [y/n] > "
+        read value
     done
-    
-    if [ $value = "y" ]; then
-	if [ -w ${CONFIGFILE} ]; then
-	    echo "## ADDED BY: RSTunnel " >> ${CONFIGFILE}
-	    echo "LocalForward "$SUCKPORT" "$REMOTEIP":"$SUCKPORT >> ${CONFIGFILE}
-	    echo "Added: LocalForward "$SUCKPORT" "$REMOTEIP":"$SUCKPORT 
-	    sleep 2
 
-	else
-	    echo "[FATAL] Unable to write to file: "$CONFIGFILE
-	    echo "Make sure the line 'LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT' is added to your $CONFIGFILE"
-	    exit 1
-	fi
+    if [ $value = "y" ]; then
+        if [ -w ${CONFIGFILE} ]; then
+            echo "## ADDED BY: RSTunnel " >> ${CONFIGFILE}
+            echo "LocalForward "$SUCKPORT" "$REMOTEIP":"$SUCKPORT >> ${CONFIGFILE}
+            echo "Added: LocalForward "$SUCKPORT" "$REMOTEIP":"$SUCKPORT
+            sleep 2
+
+            else
+            echo "[FATAL] Unable to write to file: "$CONFIGFILE
+            echo "Make sure the line 'LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT' is added to your $CONFIGFILE"
+            exit 1
+        fi
     else
-	echo "Make sure the line 'LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT' is added to your $CONFIGFILE"
-	exit 1
+        echo "Make sure the line 'LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT' is added to your $CONFIGFILE"
+        exit 1
     fi
 fi
 
@@ -352,37 +339,37 @@ fi
 ps ${PSFLAGS} | grep ssh | grep ${REMOTEHOSTNAME} | grep -v "grep "${REMOTEHOSTNAME} | grep -v "sshd" > temp.out
 
 if [ -s temp.out ]; then
-	if [ ! -z $VERBOSE ]; then
-	    echo "===> Tunnel appears to be up"
-	    echo ">> Testing connection for "${REMOTEHOSTNAME}
-	fi
-	# Trying to make a connection through the ssh forwarding port.
-	TestConnection
-	if [ ! -z $VERBOSE ]; then
-	    echo "===> Tunnel is still up and running"
-	fi
+    if [ ! -z $VERBOSE ]; then
+        echo "===> Tunnel appears to be up"
+        echo ">> Testing connection for "${REMOTEHOSTNAME}
+    fi
+    # Trying to make a connection through the ssh forwarding port.
+    TestConnection
+    if [ ! -z $VERBOSE ]; then
+        echo "===> Tunnel is still up and running"
+    fi
 else 
-	if [ ! -z $VERBOSE ]; then
-	    echo "===> Tunnel dosn't appear to be up"
-	    echo ">> Attempting to start tunnel"
-	fi
-	if [ ! -z $DEBUG ]; then
-	    ${SSHPATH} -n -f -v ${REMOTEHOSTNAME} sleep 99999999999 
-	else 
-	    ${SSHPATH} -n -f ${REMOTEHOSTNAME} sleep 999999999999
-	fi
-	ErrorCheck
-        if [ ! -z $X_EMAIL ]; then
-	    MailUser
-        fi
-	if [ ! -z $VERBOSE ]; then
-	    echo ">> Testing connection for "${REMOTEHOSTNAME}
-	fi
-	TestConnection
-	sleep 1
-	if [ ! -z $VERBOSE ]; then
-	    echo "===> Tunnel is up and running"
-	fi
+    if [ ! -z $VERBOSE ]; then
+        echo "===> Tunnel dosn't appear to be up"
+        echo ">> Attempting to start tunnel"
+    fi
+    if [ ! -z $DEBUG ]; then
+        ${SSHPATH} -n -f -v ${REMOTEHOSTNAME} sleep 99999999999
+    else
+        ${SSHPATH} -n -f ${REMOTEHOSTNAME} sleep 999999999999
+    fi
+    ErrorCheck
+    if [ ! -z $X_EMAIL ]; then
+        MailUser
+    fi
+    if [ ! -z $VERBOSE ]; then
+        echo ">> Testing connection for "${REMOTEHOSTNAME}
+    fi
+    TestConnection
+    sleep 1
+    if [ ! -z $VERBOSE ]; then
+        echo "===> Tunnel is up and running"
+    fi
 fi
 
 [ ! -z $VERBOSE ] && echo "===> Cleaning up"
