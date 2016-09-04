@@ -68,7 +68,7 @@ fi
 
 echo "# This PORT is used to test the tunnel. "20000" is default, but if you have something" >> $configfile
 echo "# else running on this port, just change it to something your not using." >> $configfile
-echo "SUCKPORT="$x_input >> $configfile
+echo "TESTPORT="$x_input >> $configfile
 
 echo "" >> $configfile
 echo "" >> $configfile

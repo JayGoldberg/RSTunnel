@@ -9,23 +9,18 @@
 ##			Chad Trabant - chad.trabant@knmi.nl
 ##			Jay Goldberg - jaymgoldberg@gmail.com
 
-##################
-## BEGIN SCRIPT ##
-##################
-
 LoadConfig() {
-    if [ ! -x rstunnel.conf ]; then
+    if [ ! -x ./rstunnel.conf ]; then
         echo "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf";
         exit 1
     else
-        . rstunnel.conf
+        . ./rstunnel.conf
     fi
 }
 
-# Simple Error Check Function
-
+# error check function
 ErrorCheck() {
-    ERR=$?
+    local ERR=$?
     if [ $ERR -ne 0 ]; then
         echo "Error Code: "$ERR
         echo "Exiting!"
@@ -56,46 +51,6 @@ HEREDOC
     exit 1
 }
 
-# This function will try to automatically install suckblow-1.1 for you
-
-InstallBlow() {
-    if [ $(id -u) -eq  0 ]; then
-        echo ""
-        else
-        echo "[FATAL] This must be run as root."
-        exit 1
-    fi
-
-    if [ $OS == "FreeBSD" ]; then
-        fetch ftp://ftp.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
-        ErrorCheck
-        if [ $? -ne 0 ]; then
-            fetch ftp://ftp.se.FreeBSD.org/pub/FreeBSD/ports/local-distfiles/archie/suckblow-1.1.tar.gz
-            ErrorCheck
-        fi
-        XPWD=$(pwd)
-        INSTALL="1"
-        mkdir temp
-        ErrorCheck
-        mv suckblow-1.1.tar.gz temp/
-        cd temp
-        tar -xvzf suckblow-1.1.tar.gz
-        cd suckblow-1.1
-        make
-        ErrorCheck
-        make install
-        ErrorCheck
-        cd ../../
-        rm -rf temp/
-        ErrorCheck
-        echo "==> Installation Complete "
-        sleep 2
-        else
-        echo "Sorry can't fetch. Please downlaod and install `suckblow-1.1.tar.gz`"
-        exit 1
-    fi
-}
-
 CheckOS() {
     case $(uname) in
         SunOS)
@@ -114,52 +69,6 @@ CheckOS() {
     esac
 }
 
-InstallBlowSource() {
-    [ ! -z $DEBUG ] && echo ">> Checking User Information"
-
-    if [ $OS == 'SunOS' ]; then
-        if [ $(who am i | awk '{print $1}') != "root" ]; then
-            echo "[FATAL] This must be run as root."
-            ##exit 1
-            echo "Still trying though ..."
-        fi
-    else
-        if [ ! $(id -u) -eq 0 ]; then
-            echo "[FATAL] This must be run as root."
-            exit 1
-        fi
-    fi
-
-    if [ -d src ]; then
-        cd src
-        else
-        echo "[FATAL] Please make sure you are in the root directory of RSTunnel."
-        exit 1
-    fi
-
-    [ ! -z $DEBUG ] && echo  ">> Compiling blow for "${OS}
-
-    if [ $OS = "SunOS" ]; then
-        gcc -o blow -lnsl -lsocket -lresolv main-mod.c
-        ErrorCheck
-    elif [ $OS = "Linux" ]; then
-        gcc -o blow main-mod.c
-        ErrorCheck
-        else
-        gcc -c main.c
-        ErrorCheck
-        gcc -o blow main.o
-        ErrorCheck
-    fi
-
-    [ ! -z $DEBUG ] && echo ">> Installing blow"
-
-    cp blow /usr/local/bin/
-    ErrorCheck
-    echo "==> Installation Complete. Please re-run rstunnel."
-    exit 1
-}
-
 MailUser() {
     if [ ! -f mail.message ]; then
         echo "File: 'mail.message' can't be found"
@@ -175,36 +84,64 @@ MailUser() {
 	done  
 }
 
-# This function will test the connection through the tunnel
+TunRun() {
+    DebugMsg ">> running command \"$SSHPATH $SSHFLAGS $REMOTEHOSTNAME sleep 99999999999\""
+	$SSHPATH $SSHFLAGS $REMOTEHOSTNAME sleep 99999999999
+}
 
+# test the connection through the tunnel
 TestConnection() {
-    if [ ! -z $DEBUG ]; then
-        echo "Testing Connection" | ${BLOWPATH} -v -p ${SUCKPORT} localhost ; ERR=$?
-    else 
-        echo "Testing Connection" | ${BLOWPATH} -p ${SUCKPORT} localhost ; ERR=$?
-    fi
+	local NETWAIT=10
+    
+    timeout 10 echo "Testing Connection" | nc $FLAGS localhost $CHECKPORT 2>&1 >/dev/null
+    ERR=$?
+    
     if [ $ERR -ne 0 ]; then 
-	if [ ! -z $VERBOSE ]; then
-	    echo ">> [ F A I L E D ]"
-	    echo "===> Attempting to restart tunnel"
-	    echo ">> Killing Old SSH Process"
-	fi
-	${KILLCMD} | ${SHELLPATH}; ERR=$?
-	if [ $ERR -ne 0 ]; then
-	    echo "[FATAL] Unable to kill previous process";
-	    exit 1
-	fi
-	if [ ! -z $DEBUG ]; then
-	    ${SSHPATH} -v -n -f ${REMOTEHOSTNAME} sleep 999999999999
-	else 
-	    ${SSHPATH} -n -f ${REMOTEHOSTNAME} sleep 99999999999
-	fi
+		DebugMsg ">> [ F A I L E D ]"
+		DebugMsg "===> Attempting to restart tunnel"
+		DebugMsg ">> Killing Old SSH Process"
+		
+		${KILLCMD} | ${SHELLPATH}; ERR=$?
+		
+		if [ $ERR -ne 0 ]; then
+			echo "[FATAL] Unable to kill previous process";
+			exit 1
+		fi
+
+		TunRun
 	  
-	ErrorCheck
-	if [ ! -z $X_EMAIL ]; then	
-		MailUser
-	fi
+		ErrorCheck
+		
+		if [ ! -z $X_EMAIL ]; then	
+			MailUser
+		fi
     fi
+}
+
+SetFlags() {
+	NCFLAGS="-w $NETWAIT -q 1 -i 1"
+	SSHFLAGS="-n -f -F $CONFIGFILE"
+	
+	# check what kind of OS is running to determine the flags for the "ps" command
+	if [ $OS = "FreeBSD" -o $OS = "Linux" ]; then
+		PSFLAGS="-awx"
+		KILLCMD=$(ps $PSFLAGS | grep ssh | grep "$REMOTEHOSTNAME sleep" | awk '{print "kill -9 "$1}')
+		[ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
+	elif [ $OS = "SunOS" ]; then
+		PSFLAGS="-ewf"
+		KILLCMD=$(ps $PSFLAGS | grep ssh | grep "$REMOTEHOSTNAME sleep" | awk '{print "kill -9 "$2}')
+		[ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
+	else 
+		echo "[FATAL] Sorry, your OS is not supported."
+		exit 1
+	fi
+	
+	[ ! -z $DEBUG ] && ( NCFLAGS="$FLAGS -v"; SSHFLAGS="$SSHFLAGS -vvv" )
+}
+
+DebugMsg() {
+	local msg="$1"
+	[ $VERBOSE ] && echo "$msg"
 }
 
 for arg in $1 $2; do
@@ -228,67 +165,22 @@ done
 
 LoadConfig
 
-[ ! -z $VERBOSE ] && echo "===> Doing some prelimenary checks"
+DebugMsg "===> Doing some preliminary checks"
 
 CheckOS
 
-# We have to check for `blow`. If it doesn't exist, let's try to
-# install it.
+SetFlags
 
-if [ ! -f ${BLOWPATH} ]; then
-    echo "Can't find blow!!"
-    echo -n "Do you want me to install it for you? [y/n] --> "
-    read answer 
-    while [ $answer != "y" -a $answer != "n" ]; do 
-        echo -n "Please choose [y/n] --> " 
-        read answer
-    done
-
-    if [ $answer = "y" ]; then
-        InstallBlowSource
-        ErrorCheck
-    else
-        echo "You must install suckblow-1.1 before you continue."
-        echo ""
-        echo "Read the README file for more information."
+# check that required binaries are available
+for cmd in "nc" "sh" "ssh" ; do
+    if [ ! $(command -v $cmd) ]; then
+        echo "[FATAL] Can't find $cmd, make sure the required binaries are installed and that their paths in the config are correct"
         exit 1
     fi
-fi
+done
 
-echo ""
-
-# Just checking to make sure the other system binaries VARIABLES are correct.
-
-if [ ! -f $SHELLPATH ]; then
-    echo "[FATAL] Can't find "$SHELLPATH
-    echo "Please make sure that the SHELLPATH variable is set correctly.";
-    exit 1
-fi
-if [ ! -f $SSHPATH ]; then
-    echo "[FATAL] Can't find "$SSHPATH
-    echo "Please make sure that the SSHPATH variable is set correctly.";
-    exit 1
-fi
-
-# We need to check what kind of OS is running to determine the flags for the "ps" command
-
-if [ $OS = "FreeBSD" -o $OS = "Linux" ]; then
-    PSFLAGS="-awx"
-    KILLCMD=$(ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$1}')
-    [ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
-elif [ $OS = "SunOS" ]; then
-    PSFLAGS="-ewf"
-    KILLCMD=$(ps ${PSFLAGS} | grep ssh | grep "${REMOTEHOSTNAME} sleep" | awk '{print "kill -9 "$2}')
-    [ -z $CONFIGFILE ] && CONFIGFILE=~/.ssh/config
-else 
-    echo "[FATAL] Sorry, your OS is not supported."
-    exit 1
-fi
-
-
-# Let's get all the perameters out of the ssh configfile.
-
-if [ -f ${CONFIGFILE} ]; then
+# Let's get all the perameters out of the ssh configfile
+if [ -f "$CONFIGFILE" ]; then
     LOCALPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $2}')
     REMOTEIP=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}')
     REMOTEPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}')
@@ -297,11 +189,10 @@ else
     exit 1
 fi
 
-# We have to make sure that we set aside a special port for blow on the same tunnel.
-# This is very cruticial, because to do a true test of the connectivity of the tunnel, we need 
-# to send some peice of data through throught it, using blow.
-
-grep "LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT"  $CONFIGFILE > tempfile.out
+# We have to make sure that we set aside a special port for netcat on
+# the same tunnel as a true test of the connectivity requires we send
+# some data through throught it using netcat
+grep "LocalForward $CHECKPORT $REMOTEIP:$REMOTEPORT" $CONFIGFILE > tempfile.out
 
 if [ -s tempfile.out ]; then
     echo -n ""
@@ -317,59 +208,52 @@ else
     done
 
     if [ $value = "y" ]; then
-        if [ -w ${CONFIGFILE} ]; then
-            echo "## ADDED BY: RSTunnel " >> ${CONFIGFILE}
-            echo "LocalForward "$SUCKPORT" "$REMOTEIP":"$SUCKPORT >> ${CONFIGFILE}
-            echo "Added: LocalForward "$SUCKPORT" "$REMOTEIP":"$SUCKPORT
+        if [ -w "$CONFIGFILE" ]; then
+            echo "## ADDED BY: RSTunnel " >> "$CONFIGFILE"
+            echo "LocalForward "$CHECKPORT" "$REMOTEIP":"$CHECKPORT >> "$CONFIGFILE"
+            echo "Added: LocalForward "$CHECKPORT" "$REMOTEIP":"$CHECKPORT
             sleep 2
 
             else
             echo "[FATAL] Unable to write to file: "$CONFIGFILE
-            echo "Make sure the line 'LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT' is added to your $CONFIGFILE"
+            echo "Make sure the line 'LocalForward $CHECKPORT $REMOTEIP:$CHECKPORT' is added to your $CONFIGFILE"
             exit 1
         fi
     else
-        echo "Make sure the line 'LocalForward $SUCKPORT $REMOTEIP:$SUCKPORT' is added to your $CONFIGFILE"
+        echo "Make sure the line 'LocalForward $CHECKPORT $REMOTEIP:$CHECKPORT' is added to your $CONFIGFILE"
         exit 1
     fi
 fi
 
-# This will check the proc listing for a active SSH tunnel running
-
-ps ${PSFLAGS} | grep ssh | grep ${REMOTEHOSTNAME} | grep -v "grep "${REMOTEHOSTNAME} | grep -v "sshd" > temp.out
+# check the proc listing for a active SSH tunnel running
+ps $PSFLAGS | grep ssh | grep $REMOTEHOSTNAME | grep -v "grep "$REMOTEHOSTNAME | grep -v "sshd" > temp.out
 
 if [ -s temp.out ]; then
-    if [ ! -z $VERBOSE ]; then
-        echo "===> Tunnel appears to be up"
-        echo ">> Testing connection for "${REMOTEHOSTNAME}
-    fi
-    # Trying to make a connection through the ssh forwarding port.
+	  DebugMsg  "===> Tunnel appears to be up"
+	  DebugMsg  ">> Testing connection for $REMOTEHOSTNAME"
+
+    # try to make a connection through the ssh forwarding port.
     TestConnection
-    if [ ! -z $VERBOSE ]; then
-        echo "===> Tunnel is still up and running"
-    fi
+
+    DebugMsg "===> Tunnel is still up and running"
 else 
-    if [ ! -z $VERBOSE ]; then
-        echo "===> Tunnel dosn't appear to be up"
-        echo ">> Attempting to start tunnel"
-    fi
-    if [ ! -z $DEBUG ]; then
-        ${SSHPATH} -n -f -v ${REMOTEHOSTNAME} sleep 99999999999
-    else
-        ${SSHPATH} -n -f ${REMOTEHOSTNAME} sleep 999999999999
-    fi
+    DebugMsg "===> Tunnel doesn't appear to be up"
+    DebugMsg ">> Attempting to start tunnel"
+    
+    TunRun
+        
     ErrorCheck
+    
     if [ ! -z $X_EMAIL ]; then
         MailUser
     fi
-    if [ ! -z $VERBOSE ]; then
-        echo ">> Testing connection for "${REMOTEHOSTNAME}
-    fi
+    
+    DebugMsg ">> Testing connection for $REMOTEHOSTNAME"
+    
     TestConnection
-    sleep 1
-    if [ ! -z $VERBOSE ]; then
-        echo "===> Tunnel is up and running"
-    fi
+    sleep 1 # TODO: why sleep here?
+    
+    DebugMsg "===> Tunnel is up and running"
 fi
 
 [ ! -z $VERBOSE ] && echo "===> Cleaning up"
