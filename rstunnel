@@ -2,18 +2,19 @@
 
 ## Reliable SSH Tunnel
 ##
-## RSTunnel written by: Amram Bentolila
-##			amram@manhattanprojects.com 
+## RSTunnel written by:
+##			"Amram Bentolila" <amram@manhattanprojects.com>
+##			"Jay Goldberg" <jaymgoldberg@gmail.com>
 ## 
 ## Contributors:  	
-##			Chad Trabant - chad.trabant@knmi.nl
-##			Jay Goldberg - jaymgoldberg@gmail.com
+##			"Chad Trabant" <chad.trabant@knmi.nl>
+##
 
 LoadConfig() {
     DebugMsg ">> Loading config file"
     if [ ! -f ./rstunnel.conf ]; then
-        echo "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf"
-        echo "or cd into your rstunnel installation directory"
+        ErrMsg "[FATAL] Can't find rstunnel.conf. Run install.sh to generate rstunnel.conf \
+             or cd into your rstunnel installation directory" >&2
         exit 1
     else
         . ./rstunnel.conf
@@ -24,12 +25,12 @@ LoadConfig() {
 # error check function
 ErrorCheck() {
     local ERR=$?
-    if [ $ERR -ne 0 ]; then
-        echo "Error Code: "$ERR
-        echo "Exiting!"
+    if [ "$ERR" -ne 0 ]; then
+        ErrMsg "Error Code: "$ERR
+        ErrMsg "Exiting!"
         [ -f tempfile.out ] && rm tempfile.out
         [ -f temp.out ] && rm temp.out
-        [ ! -z $INSTALL ] && rm -rf ${XPWD}/temp
+        [ $INSTALL ] && rm -rf ${XPWD}/temp
         exit 1
     fi
 }
@@ -43,7 +44,7 @@ Usage() {
             sent to the address figured. Be sure to add the template file 'mail.message'
             exists in the directory where rstunnel resides. This is the source of the
             mail message. Useful when rstunnel is running from a cron job or in the
-            background using rstunneld
+            background using '-d' option
 
       [-v/-vv]  '-v' is VERBOSE output, ' is VERBOSE output, '-vv' is DEBUG output. It is
             not reccomended that you run in DEBUG mode when running in cron as there is
@@ -69,7 +70,7 @@ CheckOS() {
             OS='FreeBSD'
             ;;
         *)
-            echo "[FATAL] Sorry, your OS is not supported."
+            ErrMsg "[FATAL] Sorry, your OS is not supported."
             exit 1
             ;;
     esac
@@ -77,17 +78,22 @@ CheckOS() {
 
 MailUser() {
     if [ ! -f mail.message ]; then
-        echo "File: 'mail.message' can't be found"
-        echo "Mail can't be sent due to missing file. Please be sure to add this file"
-        echo "to the current working directory with your message written in the file."
+        ErrMsg "Mail misconfiguration"
+        InfoMsg "File: 'mail.message' can't be found"
+        InfoMsg "Mail can't be sent due to missing file. Please be sure to add this file"
+        InfoMsg "to the current working directory with your message written in the file."
         exit 1
     fi
 
     # E-mail User, saying the tunnel was down, and now restarted.
     for emailuser in $EMAIL; do
         mail -s "Tunnel_Restarted" $emailuser < mail.message
-        echo "";
-        echo "Mail Sent: "$emailuser
+        local EXITCODE=$?
+        if [ "$EXITCODE" -ne 0 ]; then
+			ErrMsg "Problem sending mail"
+			return $EXITCODE
+		fi
+        InfoMsg "Mail Sent: "$emailuser
     done  
 }
 
@@ -97,13 +103,13 @@ TunRun() {
 }
 
 TunKill() {
-    DebugMsg ">> Killing SSH process"
+    InfoMsg ">> Killing SSH process"
 
     ${KILLCMD}
     ERR=$?
 
-    if [ $ERR -ne 0 ]; then
-        echo "[FATAL] Unable to kill the tunnel process";
+    if [ "$ERR" -ne 0 ]; then
+        ErrMsg "[FATAL] Unable to kill the tunnel process";
         exit 1
     fi
 }
@@ -115,18 +121,19 @@ SetConfig() {
         LOCALPORT=${LOCALPORT:-22}
         REMOTEIP=${REMOTEIP:-localhost}
         MODE=reverse
-    elif [[ ! -z $CHECKPORT || ! -z $REMOTEIP || ! -z $REMOTEPORT ]]; then
+    elif [ $CHECKPORT ] || [ $REMOTEIP ] || [ $REMOTEPORT ]; then
         unset CONFIGFILE
         return
     else
         # Let's try to get all the paramaters out of the ssh configfile
+        # TODO: use && syntax?
         if [ ! -z "$CONFIGFILE" -a -f "$CONFIGFILE" ]; then
             DebugMsg ">> Parsing SSH config"
             CHECKPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $2}')
             REMOTEIP=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}')
             REMOTEPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}')
-        elif [[ -z $CHECKPORT || -z $REMOTEIP || -z $REMOTEPORT ]]; then
-            echo "[FATAL] Can't find $CONFIGFILE and CHECKPORT, REMOTEIP and REMOTEPORT are not defined in rstunnel.conf"
+        elif [ ! $CHECKPORT ] || [ ! $REMOTEIP ] || [ ! $REMOTEPORT ]; then
+            ErrMsg "[FATAL] Can't find $CONFIGFILE and CHECKPORT, REMOTEIP and REMOTEPORT are not defined in rstunnel.conf"
         fi
 
         # We have to make sure that we set aside a special port for netcat on
@@ -137,10 +144,10 @@ SetConfig() {
         if [ -s tempfile.out ]; then
             echo -n ""
         else
-            if [[ -z $CHECKPORT || -z $REMOTEIP || -z $REMOTEPORT ]] ; then
+            if [ ! $CHECKPORT ] || [ ! $REMOTEIP ] || [ ! $REMOTEPORT ]; then
                 # Let's confirm with the user that we are going to add in a "LocalForward" line
                 # in the ~/.ssh/config.
-                echo "[FATAL] Can't find LocalForward for RSTunnel."
+                ErrMsg "[FATAL] Can't find LocalForward for RSTunnel."
                 echo -n "Do you want me to add it in the config file for you? [y/n] > "
                 read value
                 while [ -z $value ]; do
@@ -155,12 +162,12 @@ SetConfig() {
                         echo "Added: LocalForward "$CHECKPORT" "$REMOTEIP":"$REMOTEPORT
                         sleep 2
                     else
-                        echo "[FATAL] Unable to write to file: "$CONFIGFILE
-                        echo "Make sure the line 'LocalForward $CHECKPORT $REMOTEIP:$REMOTEPORT' is added to your $CONFIGFILE"
+                        ErrMsg "[FATAL] Unable to write to file: "$CONFIGFILE
+                        ErrMsg "Make sure the line 'LocalForward $CHECKPORT $REMOTEIP:$REMOTEPORT' is added to your $CONFIGFILE"
                         exit 1
                     fi
                 else
-                    echo "Make sure the line 'LocalForward $CHECKPORT $REMOTEIP:$REMOTEPORT' is added to your $CONFIGFILE"
+                    ErrMsg "Make sure the line 'LocalForward $CHECKPORT $REMOTEIP:$REMOTEPORT' is added to your $CONFIGFILE"
                     exit 1
                 fi
             fi
@@ -176,13 +183,13 @@ TestConnection() {
     fi
 	
     DebugMsg ">> running command \"echo \"Testing Connection\" | nc $NCFLAGS localhost $CHECKPORT\""
-    echo "Testing Connection" | nc $NCFLAGS localhost $CHECKPORT 2>&1 >/dev/null
+    InfoMsg "Testing Connection" | nc $NCFLAGS localhost $CHECKPORT 2>&1 >/dev/null
     ERR=$?
     
-    if [ $ERR -ne 0 ]; then 
-        DebugMsg ">> [ F A I L E D ]"
-        DebugMsg ">> Do you have a check port defined in your SSH config?"
-        DebugMsg "===> Attempting to restart tunnel"
+    if [ "$ERR" -ne 0 ]; then 
+        ErrMsg ">> [ F A I L E D ]"
+        ErrMsg ">> Do you have a check port defined in your SSH config?"
+        InfoMsg "===> Attempting to restart tunnel"
 
         TunKill
 
@@ -214,6 +221,7 @@ SetFlags() {
 	# check for dropbear
     local realssh=$(basename $(readlink -f $(which ssh)))
     if [ "$realssh" == "dropbearmulti" -o "$realssh" == "dropbear" ]; then
+		# 'K' option negates need for tunnel connectivity check
         SSHFLAGS="$SSHFLAGS -i $IDENTITYFILE -K $KEEPALIVE -y"
         TESTCONNECTION=false
     elif [ -z $CONFIGFILE ]; then
@@ -239,16 +247,23 @@ SetFlags() {
         PSFLAGS="-ewf"
         KILLCMD=$(ps $PSFLAGS | grep ssh | grep "$REMOTEHOSTNAME sleep" | awk '{print "kill -9 "$2}')
     else 
-        echo "[FATAL] Sorry, your OS is not supported."
+        ErrMsg "[FATAL] Sorry, your OS is not supported."
         exit 1
     fi
 
-    [ ! -z $DEBUG ] && ( NCFLAGS="$NCFLAGS -v"; SSHFLAGS="$SSHFLAGS -vvv" )
+    [ "$DEBUG" ] && ( NCFLAGS="$NCFLAGS -v"; SSHFLAGS="$SSHFLAGS -vvv" )
 }
 
 DebugMsg() {
-    local msg="$1"
-    [ $VERBOSE ] && echo "$msg"
+    [ "$VERBOSE" ] && echo "$1"
+}
+
+ErrMsg() {
+    echo "$1" >&2
+}
+
+InfoMsg() {
+	echo "$1"
 }
 
 Cleanup() {
@@ -270,9 +285,9 @@ Main() {
     SetFlags
 
     # check that required binaries are available
-    for cmd in "ssh" ; do
+    for cmd in "ssh"; do
         if [ ! $(which $cmd) ]; then
-            echo "[FATAL] Can't find $cmd, make sure the required binaries are installed and that their paths in the config are correct"
+            ErrMsg "[FATAL] Can't find $cmd, make sure the required binaries are installed and that their paths in the config are correct"
             exit 1
         fi
     done
@@ -284,28 +299,28 @@ Main() {
 
     if [ -s temp.out ]; then
         DebugMsg  "===> Tunnel appears to be up"
-        DebugMsg  ">> Testing connection for $REMOTEHOSTNAME"
+        InfoMsg  ">> Testing connection for $REMOTEHOSTNAME"
 
         # try to make a connection through the ssh forwarding port.
         TestConnection
 
-        DebugMsg "===> Tunnel is still up and running"
+        InfoMsg "===> Tunnel is still up and running"
     else 
         DebugMsg "===> Tunnel doesn't appear to be up"
-        DebugMsg ">> Attempting to start tunnel"
+        InfoMsg ">> Attempting to start tunnel"
 
         TunRun
 
         ErrorCheck
 
-        [ ! -z $X_EMAIL ] && MailUser
+        [ $X_EMAIL ] && MailUser
 
-        DebugMsg ">> Testing connection for $REMOTEHOSTNAME"
+        InfoMsg ">> Testing connection for $REMOTEHOSTNAME"
 
         TestConnection
         sleep 1 # TODO: why sleep here?
 
-        DebugMsg "===> Tunnel is up and running"
+        InfoMsg "===> Tunnel is up and running"
     fi
 }
 
@@ -319,10 +334,10 @@ Daemonize() {
         while [ $counter -lt $last_count ]; do
             let counter=$counter+1
             sleep 1
-            if [ $counter -eq $last_count ]; then
+            if [ "$counter" -eq "$last_count" ]; then
                 counter=1
                 sleep 2
-                echo $(date)" "$HOSTNAME": RSTunnel daemon starting" >> $logfile
+                InfoMsg $(date)" "$HOSTNAME": RSTunnel daemon starting" >> $logfile
                 Main
             fi
         done
