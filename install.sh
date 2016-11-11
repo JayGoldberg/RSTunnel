@@ -8,8 +8,8 @@ configfile=rstunnel.conf
 # 
 # Checking to see if we can write a file before we start
 if [ ! -w . ]; then
-	echo "[FATAL] Can't create rstunnel.conf. Make sure that this directory is writable." >&2
-	exit 1
+echo "[FATAL] Can't create rstunnel.conf. Make sure that this directory is writable." >&2
+exit 1
 fi
 
 clear
@@ -26,34 +26,34 @@ cat <<HEREDOC
 HEREDOC
 
 _config_revtun() {
-    echo "#" >> "$configfile"
-    echo "# REVERSE TUNNEL OPTIONS" >> "$configfile"
-    echo "" >> "$configfile"
+  echo "#" >> "$configfile"
+  echo "# REVERSE TUNNEL OPTIONS" >> "$configfile"
+  echo "" >> "$configfile"
 
-    echo ""; echo "";
+  echo ""; echo "";
 
-    echo "For a reverse tunnel, the port on the remote host to forward to this one (Optional) [Default: 9775]";
-    echo -n "Type here> "
+  echo "For a reverse tunnel, the port on the remote host to forward to this one (Optional) [Default: 9775]";
+  echo -n "Type here> "
 
-    read input
-    x_input="${input:-9775}"
+  read input
+  x_input="${input:-9775}"
 
-    echo "# Reverse ssh port, port on the remote host to forward to this one" >> "$configfile"
-    echo "REVERSEPORT=${x_input}" >> "$configfile"
-    echo "" >> "$configfile"
+  echo "# Reverse ssh port, port on the remote host to forward to this one" >> "$configfile"
+  echo "REVERSEPORT=${x_input}" >> "$configfile"
+  echo "" >> "$configfile"
 
-    echo ""; echo "";
+  echo ""; echo "";
 
-    echo "Local port that the above port should connect to on the local host [Default: 22]";
-    echo -n "Type here> "
+  echo "Local port that the above port should connect to on the local host [Default: 22]";
+  echo -n "Type here> "
 
-    read input
-    x_input="${input:-22}"
-    
-    echo "# local port to direct reverse connections to (usually SSH port 22)" >> "$configfile"
-    echo "LOCALPORT=${x_input}" >> "$configfile"
+  read input
+  x_input="${input:-22}"
 
-    echo "" >> "$configfile"
+  echo "# local port to direct reverse connections to (usually SSH port 22)" >> "$configfile"
+  echo "LOCALPORT=${x_input}" >> "$configfile"
+
+  echo "" >> "$configfile"
 }
 
 echo "#" > "$configfile"
@@ -75,12 +75,12 @@ echo -n "Type here> "
 
 read input
 while [ -z $input ]; do
-	echo -n "Please enter an IP/Hostname> "
-	read input 
+echo -n "Please enter an IP/Hostname> "
+read input 
 done
 
-echo "# Remote Server address. You can also specify an IP or SSH alias "\
-     " as set in ~/.ssh/config" >> "$configfile"
+echo "# Remote Server address. You can also specify an IP or SSH alias \
+       as set in ~/.ssh/config" >> "$configfile"
 
 echo "REMOTEHOSTNAME=${input}" >> "$configfile"
 
