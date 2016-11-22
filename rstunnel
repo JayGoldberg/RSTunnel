@@ -10,6 +10,8 @@
 ##			"Chad Trabant" <chad.trabant@knmi.nl>
 ##
 
+#set -x
+
 LoadConfig() {
   DebugMsg ">> Loading config file"
   if [ ! -f ./rstunnel.conf ]; then
@@ -124,42 +126,42 @@ TunKill() {
 
 SetConfig() {
   DebugMsg ">> Setting variables"
-  if [ ! -z $REVERSEPORT ]; then
+  if [ "$REVERSEPORT" ]; then
     DebugMsg ">> configuring in reverse mode"
     LOCALPORT=${LOCALPORT:-22}
     REMOTEIP=${REMOTEIP:-localhost}
     MODE=reverse
-  elif [ $CHECKPORT ] || [ $REMOTEIP ] || [ $REMOTEPORT ]; then
+  elif [ "$CHECKPORT" ] || [ "$REMOTEIP" ] || [ "$REMOTEPORT" ]; then
     unset CONFIGFILE
     return
   else
     # Let's try to get all the paramaters out of the ssh configfile
-    if [ ! -z "$CONFIGFILE" -a -f "$CONFIGFILE" ]; then
+    if [ "$CONFIGFILE" -a -f "$CONFIGFILE" ]; then
       DebugMsg ">> Parsing SSH config"
-      CHECKPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $2}')
-      REMOTEIP=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}')
-      REMOTEPORT=$(grep "LocalForward" $CONFIGFILE | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}')
-    elif [ ! $CHECKPORT ] || [ ! $REMOTEIP ] || [ ! $REMOTEPORT ]; then
+      CHECKPORT=$(grep "LocalForward" "$CONFIGFILE" | grep -v "#" | sed -e s/=/\ /g | awk '{print $2}')
+      REMOTEIP=$(grep "LocalForward" "$CONFIGFILE" | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}')
+      REMOTEPORT=$(grep "LocalForward" "$CONFIGFILE" | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}')
+    elif [ ! "$CHECKPORT" ] || [ ! "$REMOTEIP" ] || [ ! "$REMOTEPORT" ]; then
       ErrMsg "[FATAL] Can't find $CONFIGFILE and CHECKPORT, REMOTEIP and REMOTEPORT are not defined in rstunnel.conf"
     fi
 
     # is CHECKPORT defined?
     # TODO: is this necessary?
-    if [ grep "LocalForward $CHECKPORT $REMOTEIP:$REMOTEPORT" $CONFIGFILE ]; then
+    if [ grep "LocalForward $CHECKPORT $REMOTEIP:$REMOTEPORT" "$CONFIGFILE" ]; then
       echo -n ""
     else
-      if [ ! $CHECKPORT ] || [ ! $REMOTEIP ] || [ ! $REMOTEPORT ]; then
+      if [ ! "$CHECKPORT" ] || [ ! "$REMOTEIP" ] || [ ! "$REMOTEPORT" ]; then
         # Let's confirm with the user that we are going to add in a "LocalForward" line
         # in the ~/.ssh/config.
         ErrMsg "[FATAL] Can't find LocalForward for RSTunnel."
         echo -n "Do you want me to add it in the config file for you? [y/n] > "
         read value
-        while [ -z $value ]; do
+        while [ ! "$value" ]; do
           echo -n "Invalid selection. Please select [y/n] > "
           read value
         done
 
-        if [ $value = "y" ]; then
+        if [ "$value" = "y" ]; then
           if [ -w "$CONFIGFILE" ]; then
             echo "## ADDED BY: RSTunnel " >> "$CONFIGFILE"
             echo "LocalForward "$CHECKPORT" "$REMOTEIP":"$REMOTEPORT >> "$CONFIGFILE"
@@ -181,8 +183,8 @@ SetConfig() {
 
 # test the connection through the tunnel
 TestConnection() {
-  if [ ! -z "$TESTCONNECTION" ]; then
-    DebugMsg ">> No connection test needed for dropbear SSH client"
+  if [ ! "$TESTCONNECTION" ]; then
+    DebugMsg ">> No connection test needed for this environment"
     return
   fi
 
@@ -204,6 +206,31 @@ TestConnection() {
   fi
 }
 
+IsLinked() {
+  # TODO what if `which` doesn't exist? `which` is actually a shell script
+  # TODO argcount check for 2
+  local destexe="$(which $2)"
+  local exe="$(which $1)" # TODO err no command supplied
+  
+  if [ ! "$destexe" ]; then # $destexe is not on this box
+    echo false
+    return 0
+  fi
+
+  # is $exe a symlink?, if so, is it pointing to $destexe?
+  if [ "$exe" ] && [ -L "$exe" ] && [ "$(basename $(readlink $exe))"  = "$(basename $destexe)" ]; then
+    echo "true"
+    return 0
+  # is it a hardlink to $destexe?
+  # TODO: what if `stat` is not available? (ls -i $exe | cut -d' ' -f1)
+  elif [ "$(stat -c %i $exe)" = "$(stat -c %i $destexe)" ]; then
+    echo "true"
+    return 0
+  else
+    echo "false"
+  fi
+}
+
 SetFlags() {
   DebugMsg ">> Setting command options"
   SSHFLAGS="-N -f"
@@ -220,34 +247,30 @@ SetFlags() {
   fi
 
   # check for dropbear
-  DebugMsg ">> Checking for dropbear"
-  local realssh=$(basename $(readlink -f $(which ssh)))
-  if [ "$realssh" = "dropbearmulti" -o "$realssh" = "dropbear" ]; then
+  DebugMsg ">> Checking for dropbear"  
+
+  if [ "$(IsLinked ssh dropbearmulti)" = "true" -o "$(IsLinked ssh dropbear)" = "true" ]; then
     DebugMsg ">> Found dropbear"
     # 'K' option negates need for tunnel connectivity check
     SSHFLAGS="$SSHFLAGS -i $IDENTITYFILE -K $KEEPALIVE -y"
     TESTCONNECTION=false
-  elif [ -z $CONFIGFILE ]; then
+  elif [ "$CONFIGFILE" ]; then
     DebugMsg ">> No dropbear, using SSH config"
     # TODO use builtin keepalive on real OpenSSH client? (-o ServerAliveInterval=5)
     # or -o StrictHostKeyChecking=off
     #TESTCONNECTION=false
-    SSHFLAGS="$SSHFLAGS -n -i $IDENTITYFILE"
-  else
-    SSHFLAGS="$SSHFLAGS -n -F $CONFIGFILE"
+    SSHFLAGS="$SSHFLAGS -n -i $IDENTITYFILE -F $CONFIGFILE"
   fi
 
   # check for type of netcat
   DebugMsg ">> Checking for busybox netcat"
-  if [ "$(basename $(readlink -f $(which nc)))" = "busybox" ]; then
-    NCFLAGS="-w 5 -q 1 -i 1"
-  fi
+  [ "$(IsLinked nc busybox)" = "true" ] &&  NCFLAGS="-w 5 -q 1 -i 1"
 
   # check what kind of OS is running to determine the flags for the "ps" command
   DebugMsg ">> Setting OS-specific flags"
   if [ $OS = "FreeBSD" -o $OS = "Linux" ]; then
     PSFLAGS="-awx"
-    [ "$(basename $(readlink -f $(which ps)))" = "busybox" ] && PSFLAGS="-w"
+    [ "$(IsLinked ps busybox)" = "true" ] && PSFLAGS="-w"
     SEARCHPID="pgrep -f -d' ' \"$REMOTEHOSTNAME sleep\""
   elif [ $OS = "SunOS" ]; then
     PSFLAGS="-ewf"
@@ -307,8 +330,10 @@ Main() {
 
   # check the proc listing for a active SSH tunnel running
   DebugMsg ">> Checking for active tunnel"
-  local pids=$($(SearchPID) | tr '\n' ' ')
-  if [ $pids ]; then
+  local interpids="$(SearchPID)"
+  [ "$interpids" ] && local pids="$(echo $interpids | tr '\n' ' ')" 
+
+  if [ "$pids" ]; then
     InfoMsg  "===> Tunnel appears to be up ($pids)"
     InfoMsg  ">> Testing connection for $REMOTEHOSTNAME"
 
@@ -379,7 +404,7 @@ for arg in $1 $2; do
       ;;
     -s|--status)
       Init
-      if [ $(SearchPID) ]; then
+      if [ "$(SearchPID)" ]; then
         InfoMsg "Tunnels running in PID(s) $SearchPID"
         exit
       else
