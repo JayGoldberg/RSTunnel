@@ -208,24 +208,19 @@ TestConnection() {
 
 IsLinked() {
   # TODO what if `which` doesn't exist? `which` is actually a shell script
-  # TODO argcount check for 2
+  [ ! "$#" -eq 2 ] && { echo "wrong argument count" >&2; return 4; }
   local destexe="$(which $2)"
-  local exe="$(which $1)" # TODO err no command supplied
+  local exe="$(which $1)"
   
-  if [ ! "$destexe" ]; then # $destexe is not on this box
-    echo false
-    return 0
-  fi
+  [ ! -f "$destexe" ] || [ ! -e "$exe" ] && { echo "some of the paths do not exist" >&2; return 1; }
 
   # is $exe a symlink?, if so, is it pointing to $destexe?
-  if [ "$exe" ] && [ -L "$exe" ] && [ "$(basename $(readlink $exe))"  = "$(basename $destexe)" ]; then
+  if [ -L "$exe" ] && [ "$(basename $(readlink $exe))"  = "$(basename $destexe)" ]; then
     echo "true"
-    return 0
   # is it a hardlink to $destexe?
   # TODO: what if `stat` is not available? (ls -i $exe | cut -d' ' -f1)
   elif [ "$(stat -c %i $exe)" = "$(stat -c %i $destexe)" ]; then
     echo "true"
-    return 0
   else
     echo "false"
   fi
