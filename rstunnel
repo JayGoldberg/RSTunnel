@@ -93,13 +93,14 @@ MailUser() {
       exit 1
     fi
 
-    # E-mail User, saying the tunnel was down, and now restarted.
+    # E-mail User, saying the tunnel was down, and now restarted
+    local emailuser
     for emailuser in $EMAIL; do
       mail -s "Tunnel_Restarted" $emailuser < mail.message
-      local EXITCODE=$?
+      local EXITCODE="$?"
       if [ "$EXITCODE" -ne 0 ]; then
         ErrMsg "Problem sending mail"
-        return $EXITCODE
+        return "$EXITCODE"
       fi
       InfoMsg "Mail Sent: "$emailuser
     done
@@ -138,9 +139,9 @@ SetConfig() {
     # Let's try to get all the paramaters out of the ssh configfile
     if [ "$CONFIGFILE" -a -f "$CONFIGFILE" ]; then
       DebugMsg ">> Parsing SSH config"
-      CHECKPORT=$(grep "LocalForward" "$CONFIGFILE" | grep -v "#" | sed -e s/=/\ /g | awk '{print $2}')
-      REMOTEIP=$(grep "LocalForward" "$CONFIGFILE" | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}')
-      REMOTEPORT=$(grep "LocalForward" "$CONFIGFILE" | grep -v "#" | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}')
+      CHECKPORT=$(grep 'LocalForward' "$CONFIGFILE" | grep -v '#' | sed -e s/=/\ /g | awk '{print $2}')
+      REMOTEIP=$(grep 'LocalForward' "$CONFIGFILE" | grep -v '#' | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $1}')
+      REMOTEPORT=$(grep 'LocalForward' "$CONFIGFILE" | grep -v '#' | sed -e s/=/\ /g | awk '{print $3}' | awk -F':' '{print $2}')
     elif [ ! "$CHECKPORT" ] || [ ! "$REMOTEIP" ] || [ ! "$REMOTEPORT" ]; then
       ErrMsg "[FATAL] Can't find $CONFIGFILE and CHECKPORT, REMOTEIP and REMOTEPORT are not defined in rstunnel.conf"
     fi
@@ -161,7 +162,7 @@ SetConfig() {
           read value
         done
 
-        if [ "$value" = "y" ]; then
+        if [ "$value" == "y" ]; then
           if [ -w "$CONFIGFILE" ]; then
             echo "## ADDED BY: RSTunnel " >> "$CONFIGFILE"
             echo "LocalForward "$CHECKPORT" "$REMOTEIP":"$REMOTEPORT >> "$CONFIGFILE"
@@ -185,11 +186,11 @@ SetConfig() {
 TestConnection() {
   if [ ! "$TESTCONNECTION" ]; then
     DebugMsg ">> No connection test needed for this environment"
-    return
+    return 0
   fi
 
-  DebugMsg ">> running command \"echo \"Testing Connection\" | nc $NCFLAGS localhost $CHECKPORT\""
-  echo "test data" | nc $NCFLAGS localhost $CHECKPORT 2>&1 >/dev/null
+  DebugMsg ">> Testing Connection with timeout $NET_CONNECT_TIMEOUT nc localhost $CHECKPORT"
+  echo "test data" | timeout $NET_CONNECT_TIMEOUT nc localhost $CHECKPORT 2>&1 >/dev/null
 
   if [ "$?" -ne 0 ]; then
     ErrMsg ">> [ F A I L E D ]"
@@ -215,36 +216,54 @@ IsLinked() {
   [ ! -f "$destexe" ] || [ ! -e "$exe" ] && { echo "some of the paths do not exist" >&2; return 1; }
 
   # is $exe a symlink?, if so, is it pointing to $destexe?
-  if [ -L "$exe" ] && [ "$(basename $(readlink $exe))"  = "$(basename $destexe)" ]; then
+  if [ -L "$exe" ] && [ "$(basename $(readlink $exe))"  == "$(basename $destexe)" ]; then
     echo "true"
   # is it a hardlink to $destexe?
   # TODO: what if `stat` is not available? (ls -i $exe | cut -d' ' -f1)
-  elif [ "$(stat -c %i $exe)" = "$(stat -c %i $destexe)" ]; then
+  elif [ "$(stat -c %i $exe)" == "$(stat -c %i $destexe)" ]; then
     echo "true"
   else
     echo "false"
   fi
 }
 
+timeout () {
+    local timeout_secs=${1:-10}
+    shift
+
+    [ ! -z "${timeout_secs//[0-9]}" ] && { return 65; }
+    
+    # subshell
+    ( 
+        "$@" &
+        child=$!
+        #trap - '' SIGTERM #why would we need this?
+        (       
+                sleep $timeout_secs
+                kill $child 2> /dev/null # TODO returns 143 instead of "real" timeout's 124
+        ) &
+        wait $child
+    )
+}
+
 SetFlags() {
   DebugMsg ">> Setting command options"
-  SSHFLAGS="-N -f"
-  NCFLAGS="-w 5"
+  SSHFLAGS='-N -f'
 
   # reverse tunnel mode
-  if [ "$MODE" = "reverse" ]; then
+  [ "$MODE" == 'reverse' ] && SSHFLAGS="$SSHFLAGS -R ${REVERSEPORT}:${REMOTEIP}:${LOCALPORT}"
     # TODO dynamic grab of remote port using web service, though
     # this should be done with a separate flag for mode and a flag
     # for allowing remote lookup
-    SSHFLAGS="$SSHFLAGS -R ${REVERSEPORT}:${REMOTEIP}:${LOCALPORT}"
-  else
-    SSHFLAGS="$SSHFLAGS -L ${CHECKPORT}:${REMOTEIP}:${REMOTEPORT}"
-  fi
+
+  # enable testing
+  [ "$CHECKPORT" ] && SSHFLAGS="$SSHFLAGS -L ${CHECKPORT}:${REMOTEIP}:${REMOTEPORT}"
+
 
   # check for dropbear
   DebugMsg ">> Checking for dropbear"  
 
-  if [ "$(IsLinked ssh dropbearmulti)" = "true" -o "$(IsLinked ssh dropbear)" = "true" ]; then
+  if [ "$(IsLinked ssh dropbearmulti)" == 'true' ] || [ "$(IsLinked ssh dropbear)" == 'true' ]; then
     DebugMsg ">> Found dropbear"
     # 'K' option negates need for tunnel connectivity check
     SSHFLAGS="$SSHFLAGS -i $IDENTITYFILE -K $KEEPALIVE -y"
@@ -257,17 +276,13 @@ SetFlags() {
     SSHFLAGS="$SSHFLAGS -n -i $IDENTITYFILE -F $CONFIGFILE"
   fi
 
-  # check for type of netcat
-  DebugMsg ">> Checking for busybox netcat"
-  [ "$(IsLinked nc busybox)" = "true" ] &&  NCFLAGS="-w 5 -q 1 -i 1"
-
   # check what kind of OS is running to determine the flags for the "ps" command
   DebugMsg ">> Setting OS-specific flags"
-  if [ $OS = "FreeBSD" -o $OS = "Linux" ]; then
+  if [ "$OS" == 'FreeBSD' ] || [ $OS == 'Linux' ]; then
     PSFLAGS="-awx"
-    [ "$(IsLinked ps busybox)" = "true" ] && PSFLAGS="-w"
-    SEARCHPID="pgrep -f -d' ' \"$REMOTEHOSTNAME sleep\""
-  elif [ $OS = "SunOS" ]; then
+    [ "$(IsLinked ps busybox)" == 'true' ] && PSFLAGS="-w"
+    SEARCHPID="pgrep -f \"$REMOTEHOSTNAME sleep\""
+  elif [ "$OS" == "SunOS" ]; then
     PSFLAGS="-ewf"
     SEARCHPID="ps $PSFLAGS | grep ssh | grep \"$REMOTEHOSTNAME sleep\" |  cut -d' ' -f2"
   else
@@ -275,7 +290,7 @@ SetFlags() {
     exit 1
   fi
 
-  [ "$DEBUG" ] && ( NCFLAGS="$NCFLAGS -v"; SSHFLAGS="$SSHFLAGS -vvv" )
+  [ "$DEBUG" ] && ( SSHFLAGS="$SSHFLAGS -vvv" )
   DebugMsg ">> Done setting OS-specific flags"
 }
 
@@ -310,10 +325,11 @@ Init() {
 }
 
 Main() {
-  [ "$STARTMAIN" = "false" ] && return 0
+  [ "$STARTMAIN" == 'false' ] && return 0
 
   DebugMsg ">> Checking for required binaries"
-  for cmd in "ssh"; do
+  local cmd
+  for cmd in ssh nc; do
     if [ ! $(which $cmd) ]; then
       ErrMsg "[FATAL] Can't find $cmd, make sure the required binaries \
       are installed and that their paths in the config are correct"
@@ -321,7 +337,7 @@ Main() {
     fi
   done
 
-  # TODO what about nc in conjunction with busybox?
+  # TODO using netstat as well?
 
   # check the proc listing for a active SSH tunnel running
   DebugMsg ">> Checking for active tunnel"
@@ -330,7 +346,6 @@ Main() {
 
   if [ "$pids" ]; then
     InfoMsg  "===> Tunnel appears to be up ($pids)"
-    InfoMsg  ">> Testing connection for $REMOTEHOSTNAME"
 
     # try to make a connection through the ssh forwarding port.
     TestConnection; ErrorCheck "testing connection"
@@ -353,7 +368,7 @@ Main() {
 
 Daemonize() {
   local counter=0
-  local last_count=$KEEPALIVE
+  local last_count="$KEEPALIVE"
   STARTMAIN=true
 
   DebugMsg ">> Starting daemon loop"
@@ -364,7 +379,7 @@ Daemonize() {
       InfoMsg $(date)" "$HOSTNAME": RSTunnel daemon starting" >> $logfile
       DebugMsg ">> Calling Main()"
       Main #TODO: but keep in foreground
-      while [ "$(SearchPID)" ]; do
+      while SearchPID ]; do
         sleep 30
       done
       counter=$(( counter + 1 ))
@@ -381,38 +396,38 @@ STARTMAIN=true
 for arg in $1 $2; do
   case $arg in
     -v|--verbose)
-      VERBOSE=true
+      VERBOSE='true'
       ;;
     -vv)
-      VERBOSE=true
-      DEBUG=true
+      VERBOSE='true'
+      DEBUG='true'
       DebugMsg "===>  DEBUGGING ON  <==="
       ;;
     -e|--email)
-      X_EMAIL=true
+      X_EMAIL='true'
       ;;
     -d|--daemon)
       Init
       Daemonize
       TunKill
-      STARTMAIN=false
+      STARTMAIN='false'
       ;;
     -s|--status)
       Init
-      if [ "$(SearchPID)" ]; then
+      if SearchPID; then
         InfoMsg "Tunnels running in PID(s) $SearchPID"
         exit
       else
         InfoMsg "No running tunnels found"
         exit 1
       fi 
-      STARTMAIN=false
+      STARTMAIN='false'
       exit
       ;;
     -k|--kill)
       Init
       TunKill
-      STARTMAIN=false
+      STARTMAIN='false'
       exit
       ;;
     -?|--help|-h)
@@ -422,5 +437,6 @@ for arg in $1 $2; do
   esac
 done
 
+NET_CONNECT_TIMEOUT=3
 Init
 Main
