@@ -1,5 +1,5 @@
 # RSTunnel
-A continuation of Reliable SSH Tunnel, **without** needing `autossh`.
+A continuation of Reliable SSH Tunnel, **without** needing the `autossh` binary.
 
 RSTunnel (Reliable SSH Tunnel) is a set of pure shell scripts (`/bin/sh` compatible) that maintain a secure tunnel from a client to a server.
 
