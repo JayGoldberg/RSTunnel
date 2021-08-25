@@ -1,4 +1,4 @@
-#!/bin/ash
+#!/usr/bin/env sh
 
 #
 # This is a config script to set up rstunnel
