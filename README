@@ -10,20 +10,20 @@ This is mainly intended for people who want/have a secure tunnel from one
 host to another. If you want to do any port fowarding from one network to 
 another in a secure fashion this program can be very benefical.  
 
-For example, let's say you had an internal webserver in your office place 
-and your at home and you wanted to see it from your house.  You could use 
+For example, let's say you have an internal webserver in your office place 
+and you're at home and you wanted to see it from your house.  You could use 
 ssh to do port forwarding from your webserver at work to your computer at 
 home.  Your ssh config file would look like this "LocalForward 5000 10.0.0.254:80".
 "5000" is the port that is going to be listening on the local machine where
-your running the program.  "10.0.0.254" is the IP of the internal host of 
-the network your connecting to, and "80" is the port of the remote server 
+you're running the program.  "10.0.0.254" is the IP of the internal host of 
+the network you're connecting to, and "80" is the port of the remote server 
 that you want to forward to your network.  This is just one example of many
 on how you can use rstunnel.  
 
 Now the beauty thing about rstunnel is that let's say the tunnel goes down
-(Trust me the tunnel goes down often  when transfer alot of traffic through
+(Trust me the tunnel goes down often  when transfer a lot of traffic through
 it, or when the net connection is slow ) it will make sure that the tunnel 
-is running and acctually passing data through properly.
+is running and actually passing data through properly.
 
 It is recommended that you run rstunnel in a cron job like this.
 "1,30 * * * * /usr/local/bin/rstunnel"
@@ -40,9 +40,9 @@ To run it, just type "./rstunneld &".
 +-----------------+
 
 In order for rstunnel to work properly, you'll need "bash", "ssh", and "blow".
-The only speacial binary that you'll need is "blow". "blow" source is now 
+The only special binary that you'll need is "blow". "blow" source is now 
 packaged with rstunnel, so when you run rstunnel for the first time, it will
-install it for you.  "blow" will work with SunOS, Linux, and FreeBSD. I havn't
+install it for you.  "blow" will work with SunOS, Linux, and FreeBSD. I haven't
 tested any other platform.  If you want to install "blow" manually you can 
 grab it from here;
 "http://www.FreeBSD.org/cgi/pds.cgi?ports/net/suckblow"
@@ -50,10 +50,10 @@ grab it from here;
  INSTALL
 +-------+
 
-The installation is preatty easy, just run "install.sh", and it will guide 
+The installation is pretty easy, just run "install.sh", and it will guide 
 you through what needs to be configured.  After running the "install.sh" 
 script, and you want to do minor adjustments, just edit the "rstunnel.conf" 
-file.  This file will only exsist after you have ran the "install.sh" script.
+file.  This file will only exist after you have run the "install.sh" script.
 Once you finish with "install.sh", just run rstunnel and if there is any 
 other adjustments, rstunnel will guide you through them.
 
