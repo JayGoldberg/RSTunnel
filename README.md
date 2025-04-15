@@ -35,6 +35,12 @@ also from cron)
   -?, -h, --help  This help message
 ```
 
+e.g. from cron, it is safe to execute every 5mins, RSTunnel will not execute again if it detects it's already running.
+
+```
+*/5 * * * * cd /root/rstunnel && ./rstunnel
+```
+
 ## FAQ
 
 ### `Exited: String too long`
